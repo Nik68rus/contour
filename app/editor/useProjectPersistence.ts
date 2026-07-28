@@ -1,6 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  compressImageForUpload,
+  formatFileSize,
+  MAX_SAFE_IMAGE_UPLOAD_BYTES,
+} from "./image-compression";
 import type {
   ProjectState,
   ProjectSummary,
@@ -21,6 +26,12 @@ type CreatedProject = {
   image: Blob;
 };
 
+type PreparedImage = {
+  image: Blob;
+  state: ProjectState;
+  compressed: boolean;
+};
+
 function initialProjectState(imageName: string): ProjectState {
   return {
     version: 1,
@@ -34,6 +45,33 @@ function initialProjectState(imageName: string): ProjectState {
     strokeWidth: 2,
     showImage: true,
     showGrid: true,
+  };
+}
+
+function fitProjectStateToImage(
+  state: ProjectState,
+  width: number,
+  height: number,
+): ProjectState {
+  const oldWidth = state.imageSize.width;
+  const oldHeight = state.imageSize.height;
+  if (!oldWidth || !oldHeight) {
+    return { ...state, imageSize: { width, height } };
+  }
+  if (oldWidth === width && oldHeight === height) return state;
+
+  const scaleX = width / oldWidth;
+  const scaleY = height / oldHeight;
+  return {
+    ...state,
+    imageSize: { width, height },
+    contours: state.contours.map((contour) => ({
+      ...contour,
+      points: contour.points.map((point) => ({
+        x: point.x * scaleX,
+        y: point.y * scaleY,
+      })),
+    })),
   };
 }
 
@@ -237,6 +275,40 @@ export function useProjectPersistence({
     [],
   );
 
+  const prepareImageForUpload = useCallback(
+    async (
+      image: Blob,
+      imageName: string,
+      state: ProjectState,
+    ): Promise<PreparedImage | null> => {
+      if (image.size <= MAX_SAFE_IMAGE_UPLOAD_BYTES) {
+        return { image, state, compressed: false };
+      }
+
+      const accepted = window.confirm(
+        `Изображение «${imageName}» занимает ${formatFileSize(
+          image.size,
+        )}, а безопасный лимит загрузки — около ${formatFileSize(
+          MAX_SAFE_IMAGE_UPLOAD_BYTES,
+        )}.\n\nСжать изображение в браузере и продолжить? Обработка останется на этом устройстве. При необходимости разрешение будет уменьшено.`,
+      );
+      if (!accepted) return null;
+
+      onToast(`Сжимаем «${imageName}»…`);
+      const compressed = await compressImageForUpload(image);
+      return {
+        image: compressed.blob,
+        state: fitProjectStateToImage(
+          state,
+          compressed.width,
+          compressed.height,
+        ),
+        compressed: true,
+      };
+    },
+    [onToast],
+  );
+
   const createProjects = useCallback(
     async (files: File[]) => {
       const images = files
@@ -251,18 +323,42 @@ export function useProjectPersistence({
       setSaveStatus("saving");
 
       const created: CreatedProject[] = [];
+      let compressedCount = 0;
+      let declinedCount = 0;
+      let failedCount = 0;
       for (const file of images) {
         try {
           const state = initialProjectState(file.name);
-          created.push(await createRemoteProject(file, file.name, state));
+          const prepared = await prepareImageForUpload(
+            file,
+            file.name,
+            state,
+          );
+          if (!prepared) {
+            declinedCount += 1;
+            continue;
+          }
+          if (prepared.compressed) compressedCount += 1;
+          created.push(
+            await createRemoteProject(
+              prepared.image,
+              file.name,
+              prepared.state,
+            ),
+          );
         } catch {
+          failedCount += 1;
           // Continue uploading the other selected images.
         }
       }
 
       if (!created.length) {
-        setSaveStatus("error");
-        onToast("Не удалось добавить изображения");
+        setSaveStatus(activeProjectIdRef.current ? "saved" : "idle");
+        onToast(
+          declinedCount === images.length
+            ? "Загрузка изображений отменена"
+            : "Не удалось добавить изображения",
+        );
         return;
       }
 
@@ -276,17 +372,23 @@ export function useProjectPersistence({
         ]),
       );
       activateLocalProject(created[0], false);
-      onToast(
+      const createdLabel =
         created.length === 1
           ? "Новый проект создан"
-          : `Добавлено проектов: ${created.length}`,
-      );
+          : `Добавлено проектов: ${created.length}`;
+      const compressedLabel = compressedCount
+        ? ` · сжато: ${compressedCount}`
+        : "";
+      const skippedCount = declinedCount + failedCount;
+      const skippedLabel = skippedCount ? ` · пропущено: ${skippedCount}` : "";
+      onToast(`${createdLabel}${compressedLabel}${skippedLabel}`);
     },
     [
       activateLocalProject,
       createRemoteProject,
       flushCurrentProject,
       onToast,
+      prepareImageForUpload,
     ],
   );
 
@@ -295,10 +397,20 @@ export function useProjectPersistence({
       await flushCurrentProject();
       setSaveStatus("saving");
       try {
-        const created = await createRemoteProject(
+        const prepared = await prepareImageForUpload(
           image,
           backupImageName,
           state,
+        );
+        if (!prepared) {
+          setSaveStatus(activeProjectIdRef.current ? "saved" : "idle");
+          onToast("Импорт проекта отменён");
+          return;
+        }
+        const created = await createRemoteProject(
+          prepared.image,
+          backupImageName,
+          prepared.state,
         );
         setProjects((items) =>
           sortProjects([
@@ -318,6 +430,7 @@ export function useProjectPersistence({
       createRemoteProject,
       flushCurrentProject,
       onToast,
+      prepareImageForUpload,
     ],
   );
 
