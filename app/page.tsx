@@ -22,6 +22,33 @@ type Contour = {
   visible: boolean;
 };
 
+type ProjectState = {
+  version: 1;
+  imageName: string;
+  imageSize: { width: number; height: number };
+  contours: Contour[];
+  selectedId: number | null;
+  nextId: number;
+  zoom: number;
+  fillOpacity: number;
+  strokeWidth: number;
+  showImage: boolean;
+  showGrid: boolean;
+};
+
+type ProjectBackup = {
+  product: "contour";
+  formatVersion: 1;
+  state: ProjectState;
+  image: {
+    name: string;
+    type: string;
+    dataUrl: string;
+  };
+};
+
+type SaveStatus = "restoring" | "idle" | "saving" | "saved" | "error";
+
 const MASK_COLORS = ["#FF6B35", "#5B5BD6", "#11A36A", "#E1467C", "#E7A400"];
 const ZOOM_STEPS = [25, 50, 75, 100, 125, 150, 200];
 
@@ -43,8 +70,29 @@ function formatPoint(value: number) {
   return Number(value.toFixed(2));
 }
 
+function blobToDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+function isProjectBackup(value: unknown): value is ProjectBackup {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<ProjectBackup>;
+  return (
+    candidate.product === "contour" &&
+    candidate.formatVersion === 1 &&
+    Boolean(candidate.state) &&
+    candidate.image?.dataUrl?.startsWith("data:image/") === true
+  );
+}
+
 export default function Home() {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [imageBlob, setImageBlob] = useState<Blob | null>(null);
   const [imageName, setImageName] = useState("");
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
   const [contours, setContours] = useState<Contour[]>([]);
@@ -62,10 +110,17 @@ export default function Home() {
     pointIndex: number;
   } | null>(null);
   const [toast, setToast] = useState("");
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("restoring");
+  const [savedAt, setSavedAt] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const projectInputRef = useRef<HTMLInputElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const objectUrlRef = useRef<string | null>(null);
+  const imageDirtyRef = useRef(false);
+  const imageGenerationRef = useRef(0);
+  const restoreCompleteRef = useRef(false);
+  const autosaveTimerRef = useRef<number | null>(null);
 
   const selectedContour = useMemo(
     () => contours.find((contour) => contour.id === selectedId) ?? null,
@@ -75,6 +130,152 @@ export default function Home() {
     () => contours.find((contour) => !contour.closed) ?? null,
     [contours],
   );
+
+  const projectState = useMemo<ProjectState>(
+    () => ({
+      version: 1,
+      imageName,
+      imageSize,
+      contours,
+      selectedId,
+      nextId,
+      zoom,
+      fillOpacity,
+      strokeWidth,
+      showImage,
+      showGrid,
+    }),
+    [
+      contours,
+      fillOpacity,
+      imageName,
+      imageSize,
+      nextId,
+      selectedId,
+      showGrid,
+      showImage,
+      strokeWidth,
+      zoom,
+    ],
+  );
+
+  const displayImageBlob = useCallback((blob: Blob) => {
+    if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+    const url = URL.createObjectURL(blob);
+    objectUrlRef.current = url;
+    setImageUrl(url);
+    setImageBlob(blob);
+  }, []);
+
+  const applyProjectState = useCallback((state: ProjectState) => {
+    setImageName(state.imageName);
+    setImageSize(state.imageSize);
+    setContours(state.contours);
+    setSelectedId(state.selectedId);
+    setNextId(state.nextId);
+    setZoom(state.zoom);
+    setFillOpacity(state.fillOpacity);
+    setStrokeWidth(state.strokeWidth);
+    setShowImage(state.showImage);
+    setShowGrid(state.showGrid);
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const restoreProject = async () => {
+      try {
+        const response = await fetch("/api/project", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error("Cloud restore unavailable");
+
+        const payload = (await response.json()) as {
+          project: {
+            state: ProjectState;
+            hasImage: boolean;
+            updatedAt: string;
+          } | null;
+        };
+
+        if (payload.project?.hasImage) {
+          const imageResponse = await fetch(
+            `/api/project/image?updated=${encodeURIComponent(payload.project.updatedAt)}`,
+            { cache: "no-store", signal: controller.signal },
+          );
+          if (!imageResponse.ok) throw new Error("Project image unavailable");
+
+          const blob = await imageResponse.blob();
+          displayImageBlob(blob);
+          applyProjectState(payload.project.state);
+          imageDirtyRef.current = false;
+          setSavedAt(payload.project.updatedAt);
+          setSaveStatus("saved");
+          setToast("Проект восстановлен из облака");
+        } else {
+          setSaveStatus("idle");
+        }
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        setSaveStatus("error");
+      } finally {
+        if (!controller.signal.aborted) restoreCompleteRef.current = true;
+      }
+    };
+
+    void restoreProject();
+    return () => controller.abort();
+  }, [applyProjectState, displayImageBlob]);
+
+  useEffect(() => {
+    if (
+      !restoreCompleteRef.current ||
+      !imageBlob ||
+      !imageSize.width ||
+      !imageSize.height
+    ) {
+      return;
+    }
+
+    if (autosaveTimerRef.current) {
+      window.clearTimeout(autosaveTimerRef.current);
+    }
+
+    const imageGeneration = imageGenerationRef.current;
+    autosaveTimerRef.current = window.setTimeout(async () => {
+      setSaveStatus("saving");
+      try {
+        const formData = new FormData();
+        formData.append("state", JSON.stringify(projectState));
+        if (imageDirtyRef.current) {
+          formData.append("image", imageBlob, imageName || "image");
+          formData.append("imageName", imageName || "image");
+        }
+
+        const response = await fetch("/api/project", {
+          method: "POST",
+          body: formData,
+        });
+        if (!response.ok) throw new Error("Cloud save unavailable");
+
+        const payload = (await response.json()) as { updatedAt: string };
+        if (imageGenerationRef.current === imageGeneration) {
+          imageDirtyRef.current = false;
+        }
+        setSavedAt(payload.updatedAt);
+        setSaveStatus("saved");
+      } catch {
+        setSaveStatus("error");
+      }
+    }, 900);
+
+    return () => {
+      if (autosaveTimerRef.current) {
+        window.clearTimeout(autosaveTimerRef.current);
+      }
+    };
+  }, [imageBlob, imageName, imageSize, projectState]);
 
   const updateFitScale = useCallback(() => {
     const viewport = viewportRef.current;
@@ -171,10 +372,10 @@ export default function Home() {
       setToast("Выберите файл изображения");
       return;
     }
-    if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
-    const url = URL.createObjectURL(file);
-    objectUrlRef.current = url;
-    setImageUrl(url);
+    if (saveStatus === "restoring") return;
+    displayImageBlob(file);
+    imageGenerationRef.current += 1;
+    imageDirtyRef.current = true;
     setImageName(file.name);
     setImageSize({ width: 0, height: 0 });
     setContours([]);
@@ -192,6 +393,56 @@ export default function Home() {
     event.preventDefault();
     setIsDraggingFile(false);
     loadFile(event.dataTransfer.files?.[0]);
+  };
+
+  const exportProjectFile = async () => {
+    if (!imageBlob) return;
+    try {
+      const backup: ProjectBackup = {
+        product: "contour",
+        formatVersion: 1,
+        state: projectState,
+        image: {
+          name: imageName || "image",
+          type: imageBlob.type || "application/octet-stream",
+          dataUrl: await blobToDataUrl(imageBlob),
+        },
+      };
+      const blob = new Blob([JSON.stringify(backup)], {
+        type: "application/json;charset=utf-8",
+      });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${imageName.replace(/\.[^/.]+$/, "") || "contour-project"}.contour`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      setToast("Резервная копия проекта скачана");
+    } catch {
+      setToast("Не удалось создать файл проекта");
+    }
+  };
+
+  const importProjectFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    try {
+      const payload = JSON.parse(await file.text()) as unknown;
+      if (!isProjectBackup(payload)) throw new Error("Invalid project");
+
+      const imageResponse = await fetch(payload.image.dataUrl);
+      const blob = await imageResponse.blob();
+      displayImageBlob(blob);
+      applyProjectState(payload.state);
+      imageGenerationRef.current += 1;
+      imageDirtyRef.current = true;
+      restoreCompleteRef.current = true;
+      setToast("Проект открыт и будет сохранён в облаке");
+    } catch {
+      setToast("Не удалось открыть файл проекта");
+    }
   };
 
   const createContour = (firstPoint?: Point) => {
@@ -345,6 +596,21 @@ export default function Home() {
   };
 
   const completedCount = contours.filter((contour) => contour.closed).length;
+  const saveLabel =
+    saveStatus === "restoring"
+      ? "Восстановление…"
+      : saveStatus === "saving"
+        ? "Сохранение…"
+        : saveStatus === "saved"
+          ? savedAt
+            ? `Сохранено ${new Date(savedAt).toLocaleTimeString("ru-RU", {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}`
+            : "Сохранено"
+          : saveStatus === "error"
+            ? "Нет связи с облаком"
+            : "Автосохранение";
 
   return (
     <main className="app-shell">
@@ -369,12 +635,17 @@ export default function Home() {
               {imageSize.width} × {imageSize.height}
             </small>
           )}
+          <span className={`save-indicator ${saveStatus}`}>
+            <i />
+            {saveLabel}
+          </span>
         </div>
 
         <div className="top-actions">
           <button
             className="button button-ghost"
             onClick={() => fileInputRef.current?.click()}
+            disabled={saveStatus === "restoring"}
           >
             <Icon>↥</Icon>
             {imageUrl ? "Заменить" : "Открыть"}
@@ -394,6 +665,14 @@ export default function Home() {
             accept="image/*"
             onChange={handleFileChange}
             aria-label="Загрузить изображение"
+          />
+          <input
+            ref={projectInputRef}
+            className="visually-hidden"
+            type="file"
+            accept=".contour,application/json"
+            onChange={importProjectFile}
+            aria-label="Открыть файл проекта Contour"
           />
         </div>
       </header>
@@ -483,6 +762,25 @@ export default function Home() {
             Новый контур
           </button>
 
+          <div className="project-file-actions">
+            <button
+              onClick={exportProjectFile}
+              disabled={!imageBlob}
+              title="Скачать резервную копию вместе с изображением"
+            >
+              <Icon>↓</Icon>
+              Проект
+            </button>
+            <button
+              onClick={() => projectInputRef.current?.click()}
+              disabled={saveStatus === "restoring"}
+              title="Открыть резервную копию проекта"
+            >
+              <Icon>↥</Icon>
+              Открыть
+            </button>
+          </div>
+
           <div className="panel-tip">
             <span className="tip-icon">i</span>
             <p>
@@ -550,6 +848,7 @@ export default function Home() {
               <button
                 className="upload-card"
                 onClick={() => fileInputRef.current?.click()}
+                disabled={saveStatus === "restoring"}
               >
                 <span className="upload-visual">
                   <span className="image-corner top-left" />
@@ -558,9 +857,21 @@ export default function Home() {
                   <span className="image-corner bottom-right" />
                   <Icon>↥</Icon>
                 </span>
-                <strong>Загрузите изображение</strong>
-                <span>PNG, JPG, WebP или SVG</span>
-                <small>Перетащите файл сюда или нажмите для выбора</small>
+                <strong>
+                  {saveStatus === "restoring"
+                    ? "Восстанавливаем проект…"
+                    : "Загрузите изображение"}
+                </strong>
+                <span>
+                  {saveStatus === "restoring"
+                    ? "Проверяем последнее облачное сохранение"
+                    : "PNG, JPG, WebP или SVG"}
+                </span>
+                <small>
+                  {saveStatus === "restoring"
+                    ? "Это займёт несколько секунд"
+                    : "Перетащите файл сюда или нажмите для выбора"}
+                </small>
               </button>
             ) : (
               <div

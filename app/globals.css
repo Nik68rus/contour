@@ -187,6 +187,58 @@ input:focus-visible {
   font-weight: 500;
 }
 
+.save-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 5px;
+  padding-left: 10px;
+  border-left: 1px solid var(--line);
+  color: #8b877f;
+  font-size: 9px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.save-indicator i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #b9b5ad;
+}
+
+.save-indicator.saving i,
+.save-indicator.restoring i {
+  background: var(--accent);
+  animation: save-pulse 1s ease-in-out infinite;
+}
+
+.save-indicator.saved {
+  color: #4d7763;
+}
+
+.save-indicator.saved i {
+  background: #19a96b;
+}
+
+.save-indicator.error {
+  color: #ad5948;
+}
+
+.save-indicator.error i {
+  background: #d9654c;
+}
+
+@keyframes save-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 .status-dot {
   width: 7px;
   height: 7px;
@@ -455,6 +507,45 @@ input:focus-visible {
   opacity: 0.45;
 }
 
+.project-file-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  margin: -5px 14px 14px;
+}
+
+.project-file-actions button {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: #6d6a64;
+  background: #faf9f6;
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.project-file-actions button:hover:not(:disabled) {
+  color: var(--accent-dark);
+  border-color: #f2b9a7;
+  background: var(--accent-soft);
+}
+
+.project-file-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.project-file-actions .icon {
+  width: 14px;
+  height: 14px;
+  font-size: 13px;
+}
+
 .panel-tip {
   display: flex;
   align-items: flex-start;
@@ -664,6 +755,14 @@ input:focus-visible {
 
 .upload-card:hover {
   border-color: var(--accent);
+}
+
+.upload-card:disabled {
+  cursor: wait;
+}
+
+.upload-card:disabled:hover {
+  border-color: #d2cec5;
 }
 
 .upload-card strong {
@@ -1168,6 +1267,7 @@ input:focus-visible {
   .left-panel .panel-heading,
   .panel-tip,
   .add-contour,
+  .project-file-actions,
   .layer-copy {
     display: none;
   }
