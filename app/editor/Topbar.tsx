@@ -8,8 +8,10 @@ type TopbarProps = {
   completedCount: number;
   saveStatus: SaveStatus;
   savedAt: string | null;
+  focusMode: boolean;
   onAddImages: () => void;
   onExportSvg: () => void;
+  onToggleFocusMode: () => void;
 };
 
 function saveStatusLabel(status: SaveStatus, savedAt: string | null) {
@@ -32,8 +34,10 @@ export function Topbar({
   completedCount,
   saveStatus,
   savedAt,
+  focusMode,
   onAddImages,
   onExportSvg,
+  onToggleFocusMode,
 }: TopbarProps) {
   return (
     <header className="topbar">
@@ -64,6 +68,21 @@ export function Topbar({
       </div>
 
       <div className="top-actions">
+        <button
+          className={`button button-ghost focus-button ${
+            focusMode ? "active" : ""
+          }`}
+          onClick={onToggleFocusMode}
+          aria-pressed={focusMode}
+          title={
+            focusMode
+              ? "Развернуть боковые панели"
+              : "Свернуть все боковые панели"
+          }
+        >
+          <Icon>{focusMode ? "↔" : "⇥"}</Icon>
+          <span>{focusMode ? "Панели" : "Фокус"}</span>
+        </button>
         <button
           className="button button-ghost"
           onClick={onAddImages}

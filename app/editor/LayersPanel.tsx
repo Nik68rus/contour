@@ -1,4 +1,8 @@
 import { Icon } from "./Icon";
+import {
+  CollapsedPanelRail,
+  PanelCollapseButton,
+} from "./CollapsiblePanel";
 import { PanelHeading } from "./PanelHeading";
 import type { Contour, SaveStatus } from "./types";
 
@@ -12,7 +16,9 @@ type LayersPanelProps = {
   completedCount: number;
   hasDraft: boolean;
   saveStatus: SaveStatus;
+  collapsed: boolean;
   onSelect: (id: number | null) => void;
+  onToggleCollapse: () => void;
   onToggleImage: () => void;
   onToggleContour: (contour: Contour) => void;
   onCreateContour: () => void;
@@ -30,17 +36,38 @@ export function LayersPanel({
   completedCount,
   hasDraft,
   saveStatus,
+  collapsed,
   onSelect,
+  onToggleCollapse,
   onToggleImage,
   onToggleContour,
   onCreateContour,
   onExportProject,
   onOpenProject,
 }: LayersPanelProps) {
+  if (collapsed) {
+    return (
+      <CollapsedPanelRail
+        className="left-panel"
+        side="left"
+        label="Контуры"
+        icon="⌁"
+        onExpand={onToggleCollapse}
+      />
+    );
+  }
+
   return (
     <aside className="left-panel panel">
       <PanelHeading eyebrow="Слои" title="Контуры">
-        <span className="count-badge">{completedCount}</span>
+        <div className="panel-heading-actions">
+          <span className="count-badge">{completedCount}</span>
+          <PanelCollapseButton
+            side="left"
+            label="Свернуть панель контуров"
+            onClick={onToggleCollapse}
+          />
+        </div>
       </PanelHeading>
 
       <div className="layer-list">

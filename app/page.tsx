@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, type ChangeEvent } from "react";
+import { useRef, useState, type ChangeEvent } from "react";
 import { InspectorPanel } from "./editor/InspectorPanel";
 import { LayersPanel } from "./editor/LayersPanel";
 import { ProjectsPanel } from "./editor/ProjectsPanel";
@@ -13,6 +13,30 @@ export default function Home() {
   const editor = useMaskEditor();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const projectInputRef = useRef<HTMLInputElement>(null);
+  const [collapsedPanels, setCollapsedPanels] = useState({
+    projects: false,
+    layers: false,
+    inspector: false,
+  });
+  const focusMode =
+    collapsedPanels.projects &&
+    collapsedPanels.layers &&
+    collapsedPanels.inspector;
+
+  const togglePanel = (panel: keyof typeof collapsedPanels) => {
+    setCollapsedPanels((current) => ({
+      ...current,
+      [panel]: !current[panel],
+    }));
+  };
+
+  const toggleFocusMode = () => {
+    setCollapsedPanels({
+      projects: !focusMode,
+      layers: !focusMode,
+      inspector: !focusMode,
+    });
+  };
 
   const handleImageChange = (event: ChangeEvent<HTMLInputElement>) => {
     void editor.addImages(Array.from(event.target.files ?? []));
@@ -40,8 +64,10 @@ export default function Home() {
         completedCount={editor.completedCount}
         saveStatus={editor.saveStatus}
         savedAt={editor.savedAt}
+        focusMode={focusMode}
         onAddImages={() => fileInputRef.current?.click()}
         onExportSvg={editor.exportSvg}
+        onToggleFocusMode={toggleFocusMode}
       />
 
       <input
@@ -62,12 +88,20 @@ export default function Home() {
         aria-label="Открыть файл проекта Contour"
       />
 
-      <section className="editor-grid">
+      <section
+        className={`editor-grid ${
+          collapsedPanels.projects ? "projects-collapsed" : ""
+        } ${collapsedPanels.layers ? "layers-collapsed" : ""} ${
+          collapsedPanels.inspector ? "inspector-collapsed" : ""
+        }`}
+      >
         <ProjectsPanel
           projects={editor.projects}
           activeProjectId={editor.activeProjectId}
           saveStatus={editor.saveStatus}
+          collapsed={collapsedPanels.projects}
           onAdd={() => fileInputRef.current?.click()}
+          onToggleCollapse={() => togglePanel("projects")}
           onSelect={(projectId) => void editor.selectProject(projectId)}
           onDelete={handleDeleteProject}
         />
@@ -82,7 +116,9 @@ export default function Home() {
           completedCount={editor.completedCount}
           hasDraft={Boolean(editor.draftContour)}
           saveStatus={editor.saveStatus}
+          collapsed={collapsedPanels.layers}
           onSelect={editor.setSelectedId}
+          onToggleCollapse={() => togglePanel("layers")}
           onToggleImage={() =>
             editor.setShowImage((visible) => !visible)
           }
@@ -134,7 +170,9 @@ export default function Home() {
           fillOpacity={editor.fillOpacity}
           strokeWidth={editor.strokeWidth}
           completedCount={editor.completedCount}
+          collapsed={collapsedPanels.inspector}
           onDelete={editor.deleteSelected}
+          onToggleCollapse={() => togglePanel("inspector")}
           onCloseDraft={editor.closeDraft}
           onChangeContour={editor.setContourProperty}
           onFillOpacityChange={editor.setFillOpacity}

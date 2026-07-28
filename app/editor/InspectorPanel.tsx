@@ -1,5 +1,9 @@
 import type { Contour } from "./types";
 import { MASK_COLORS } from "./types";
+import {
+  CollapsedPanelRail,
+  PanelCollapseButton,
+} from "./CollapsiblePanel";
 import { PanelHeading } from "./PanelHeading";
 import { RangeControl } from "./RangeControl";
 
@@ -8,7 +12,9 @@ type InspectorPanelProps = {
   fillOpacity: number;
   strokeWidth: number;
   completedCount: number;
+  collapsed: boolean;
   onDelete: () => void;
+  onToggleCollapse: () => void;
   onCloseDraft: () => void;
   onChangeContour: (
     id: number,
@@ -24,13 +30,27 @@ export function InspectorPanel({
   fillOpacity,
   strokeWidth,
   completedCount,
+  collapsed,
   onDelete,
+  onToggleCollapse,
   onCloseDraft,
   onChangeContour,
   onFillOpacityChange,
   onStrokeWidthChange,
   onCopySvg,
 }: InspectorPanelProps) {
+  if (collapsed) {
+    return (
+      <CollapsedPanelRail
+        className="right-panel"
+        side="right"
+        label="Свойства"
+        icon="⌘"
+        onExpand={onToggleCollapse}
+      />
+    );
+  }
+
   return (
     <aside className="right-panel panel">
       <PanelHeading
@@ -38,16 +58,23 @@ export function InspectorPanel({
         title={selectedContour ? selectedContour.name : "SVG‑маска"}
         className="inspector-heading"
       >
-        {selectedContour && (
-          <button
-            className="icon-action danger"
-            onClick={onDelete}
-            aria-label="Удалить контур"
-            title="Удалить контур"
-          >
-            ×
-          </button>
-        )}
+        <div className="panel-heading-actions">
+          {selectedContour && (
+            <button
+              className="icon-action danger"
+              onClick={onDelete}
+              aria-label="Удалить контур"
+              title="Удалить контур"
+            >
+              ×
+            </button>
+          )}
+          <PanelCollapseButton
+            side="right"
+            label="Свернуть панель свойств"
+            onClick={onToggleCollapse}
+          />
+        </div>
       </PanelHeading>
 
       {selectedContour ? (

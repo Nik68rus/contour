@@ -9,12 +9,14 @@ async function source(path) {
 }
 
 test("supports a componentized multi-project editor", async () => {
-  const [page, projectsPanel, workspace, persistence] = await Promise.all([
-    source("app/page.tsx"),
-    source("app/editor/ProjectsPanel.tsx"),
-    source("app/editor/Workspace.tsx"),
-    source("app/editor/useProjectPersistence.ts"),
-  ]);
+  const [page, projectsPanel, workspace, persistence, collapsiblePanel] =
+    await Promise.all([
+      source("app/page.tsx"),
+      source("app/editor/ProjectsPanel.tsx"),
+      source("app/editor/Workspace.tsx"),
+      source("app/editor/useProjectPersistence.ts"),
+      source("app/editor/CollapsiblePanel.tsx"),
+    ]);
 
   assert.match(page, /<ProjectsPanel/);
   assert.match(page, /multiple/);
@@ -26,6 +28,12 @@ test("supports a componentized multi-project editor", async () => {
   assert.match(persistence, /createProjects/);
   assert.match(persistence, /selectProject/);
   assert.match(persistence, /removeProject/);
+  assert.match(page, /projects-collapsed/);
+  assert.match(page, /layers-collapsed/);
+  assert.match(page, /inspector-collapsed/);
+  assert.match(page, /toggleFocusMode/);
+  assert.match(collapsiblePanel, /CollapsedPanelRail/);
+  assert.match(collapsiblePanel, /PanelCollapseButton/);
 });
 
 test("keeps every project scoped to its authenticated owner", async () => {

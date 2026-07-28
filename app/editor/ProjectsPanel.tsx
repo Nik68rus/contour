@@ -1,4 +1,8 @@
 import { Icon } from "./Icon";
+import {
+  CollapsedPanelRail,
+  PanelCollapseButton,
+} from "./CollapsiblePanel";
 import { PanelHeading } from "./PanelHeading";
 import type { ProjectSummary, SaveStatus } from "./types";
 
@@ -6,7 +10,9 @@ type ProjectsPanelProps = {
   projects: ProjectSummary[];
   activeProjectId: string | null;
   saveStatus: SaveStatus;
+  collapsed: boolean;
   onAdd: () => void;
+  onToggleCollapse: () => void;
   onSelect: (projectId: string) => void;
   onDelete: (project: ProjectSummary) => void;
 };
@@ -21,22 +27,43 @@ export function ProjectsPanel({
   projects,
   activeProjectId,
   saveStatus,
+  collapsed,
   onAdd,
+  onToggleCollapse,
   onSelect,
   onDelete,
 }: ProjectsPanelProps) {
+  if (collapsed) {
+    return (
+      <CollapsedPanelRail
+        className="projects-panel"
+        side="left"
+        label="Проекты"
+        icon="▧"
+        onExpand={onToggleCollapse}
+      />
+    );
+  }
+
   return (
     <aside className="projects-panel panel">
       <PanelHeading eyebrow="Библиотека" title="Проекты">
-        <button
-          className="icon-action add-project-icon"
-          onClick={onAdd}
-          disabled={saveStatus === "restoring"}
-          aria-label="Добавить изображения"
-          title="Добавить изображения"
-        >
-          +
-        </button>
+        <div className="panel-heading-actions">
+          <button
+            className="icon-action add-project-icon"
+            onClick={onAdd}
+            disabled={saveStatus === "restoring"}
+            aria-label="Добавить изображения"
+            title="Добавить изображения"
+          >
+            +
+          </button>
+          <PanelCollapseButton
+            side="left"
+            label="Свернуть панель проектов"
+            onClick={onToggleCollapse}
+          />
+        </div>
       </PanelHeading>
 
       <div className="project-list">
