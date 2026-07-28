@@ -28,8 +28,8 @@ type WorkspaceProps = {
   draftContour: Contour | null;
   fillOpacity: number;
   strokeWidth: number;
-  onOpenImage: () => void;
-  onFileDrop: (file?: File) => void;
+  onOpenImages: () => void;
+  onFilesDrop: (files: File[]) => void;
   onToggleGrid: () => void;
   onZoomReset: () => void;
   onZoomIn: () => void;
@@ -65,8 +65,8 @@ export function Workspace({
   draftContour,
   fillOpacity,
   strokeWidth,
-  onOpenImage,
-  onFileDrop,
+  onOpenImages,
+  onFilesDrop,
   onToggleGrid,
   onZoomReset,
   onZoomIn,
@@ -85,7 +85,7 @@ export function Workspace({
   const handleDrop = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     setIsDraggingFile(false);
-    onFileDrop(event.dataTransfer.files?.[0]);
+    onFilesDrop(Array.from(event.dataTransfer.files ?? []));
   };
 
   return (
@@ -146,7 +146,7 @@ export function Workspace({
         {!imageUrl ? (
           <button
             className="upload-card"
-            onClick={onOpenImage}
+            onClick={onOpenImages}
             disabled={saveStatus === "restoring"}
           >
             <span className="upload-visual">
@@ -159,12 +159,12 @@ export function Workspace({
             <strong>
               {saveStatus === "restoring"
                 ? "Восстанавливаем проект…"
-                : "Загрузите изображение"}
+                : "Добавьте изображения"}
             </strong>
             <span>
               {saveStatus === "restoring"
                 ? "Проверяем последнее облачное сохранение"
-                : "PNG, JPG, WebP или SVG"}
+                : "Одно или несколько · PNG, JPG, WebP или SVG"}
             </span>
             <small>
               {saveStatus === "restoring"
@@ -195,8 +195,8 @@ export function Workspace({
         )}
         {isDraggingFile && (
           <div className="drop-overlay">
-            <strong>Отпустите файл</strong>
-            <span>Изображение откроется в редакторе</span>
+            <strong>Отпустите изображения</strong>
+            <span>Для каждого файла будет создан отдельный проект</span>
           </div>
         )}
       </div>
@@ -226,7 +226,7 @@ export function Workspace({
             <span>Отменить</span>
           </>
         ) : (
-          <span>Изображение обрабатывается только в вашем браузере</span>
+          <span>Выберите изображения — проекты сохранятся в облаке</span>
         )}
       </div>
     </section>

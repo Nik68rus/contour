@@ -1,91 +1,59 @@
 import assert from "node:assert/strict";
-import { access, readFile, readdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const developmentPreviewMeta =
-  /<meta(?=[^>]*\bname=["']codex-preview["'])(?=[^>]*\bcontent=["']development["'])[^>]*>/i;
-const templateRoot = new URL("../", import.meta.url);
-const previewRoot = new URL("../app/_sites-preview/", import.meta.url);
+const root = new URL("../", import.meta.url);
 
-async function render() {
-  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
-  const { default: worker } = await import(workerUrl.href);
-
-  return worker.fetch(
-    new Request("http://localhost/", {
-      headers: { accept: "text/html" },
-    }),
-    {
-      ASSETS: {
-        fetch: async () => new Response("Not found", { status: 404 }),
-      },
-    },
-    {
-      waitUntil() {},
-      passThroughOnException() {},
-    },
-  );
+async function source(path) {
+  return readFile(new URL(path, root), "utf8");
 }
 
-test("server-renders the starter loading skeleton", async () => {
-  const response = await render();
-  assert.equal(response.status, 200);
-  assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
-
-  const html = await response.text();
-  assert.match(html, developmentPreviewMeta);
-  assert.match(html, /<title>Your site is taking shape<\/title>/i);
-  assert.match(html, /Building your site/);
-  assert.match(html, /Your site is taking shape/);
-  assert.match(
-    html,
-    /Your first version will appear here automatically when it’s ready\./,
-  );
-  assert.doesNotMatch(html, /Codex/);
-  assert.match(html, /react-loading-skeleton/);
-  assert.match(html, /role="status"/);
-});
-
-test("keeps the loading skeleton scoped and disposable", async () => {
-  const [preview, css, page, layout, packageJson, files] = await Promise.all([
-    readFile(new URL("SkeletonPreview.tsx", previewRoot), "utf8"),
-    readFile(new URL("preview.css", previewRoot), "utf8"),
-    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../package.json", import.meta.url), "utf8"),
-    readdir(previewRoot),
+test("supports a componentized multi-project editor", async () => {
+  const [page, projectsPanel, workspace, persistence] = await Promise.all([
+    source("app/page.tsx"),
+    source("app/editor/ProjectsPanel.tsx"),
+    source("app/editor/Workspace.tsx"),
+    source("app/editor/useProjectPersistence.ts"),
   ]);
 
-  assert.deepEqual(files.sort(), ["SkeletonPreview.tsx", "preview.css"]);
-  assert.match(preview, /from "react-loading-skeleton"/);
-  assert.match(preview, /baseColor="#eceae7"/);
-  assert.match(preview, /highlightColor="#f9f8f6"/);
-  assert.match(preview, /duration=\{2\.8\}/);
-  assert.match(preview, /sites-skeleton-search-placeholder/);
-  assert.match(packageJson, /"react-loading-skeleton": "3\.5\.0"/);
+  assert.match(page, /<ProjectsPanel/);
+  assert.match(page, /multiple/);
+  assert.match(page, /editor\.addImages/);
+  assert.match(page, /editor\.selectProject/);
+  assert.match(projectsPanel, /project\.contourCount/);
+  assert.match(projectsPanel, /Удалить проект/);
+  assert.match(workspace, /Для каждого файла будет создан отдельный проект/);
+  assert.match(persistence, /createProjects/);
+  assert.match(persistence, /selectProject/);
+  assert.match(persistence, /removeProject/);
+});
 
-  const shellIndex = preview.indexOf('className="sites-skeleton-shell"');
-  const statusIndex = preview.indexOf('className="sites-skeleton-status"');
-  assert.ok(shellIndex >= 0 && statusIndex > shellIndex);
-  assert.match(css, /position:\s*fixed/);
-  assert.match(css, /inset:\s*0/);
-  assert.match(css, /opacity:\s*0\.52/);
-  assert.match(css, /prefers-reduced-motion:\s*reduce/);
-  assert.doesNotMatch(css, /#020617|canvas|pets|progress/i);
-  assert.doesNotMatch(
-    preview,
-    /loading-spinner|status-mark|status-progress|canvas|cookie|random/i,
-  );
+test("keeps every project scoped to its authenticated owner", async () => {
+  const [database, collectionRoute, projectRoute, imageRoute] =
+    await Promise.all([
+      source("db/projects.ts"),
+      source("app/api/projects/route.ts"),
+      source("app/api/projects/[projectId]/route.ts"),
+      source("app/api/projects/[projectId]/image/route.ts"),
+    ]);
 
-  assert.match(page, /export const metadata:\s*Metadata/);
-  assert.match(page, /"codex-preview": "development"/);
-  assert.match(page, /<SkeletonPreview \/>/);
-  assert.match(layout, /title:\s*"Starter Project"/);
-  assert.doesNotMatch(layout, /codex-preview|_sites-preview|themeColor|\bViewport\b/);
-  assert.doesNotMatch(css, /(^|\s)(html|body)\s*\{/m);
+  assert.match(database, /eq\(projects\.userEmail, userEmail\)/);
+  assert.match(database, /eq\(projects\.id, projectId\)/);
+  assert.match(collectionRoute, /getChatGPTUser/);
+  assert.match(projectRoute, /getSavedProject\(user\.email, projectId\)/);
+  assert.match(imageRoute, /getSavedProject\(user\.email, projectId\)/);
+});
 
-  await assert.rejects(
-    access(new URL("public/_sites-preview", templateRoot)),
-  );
+test("migrates the previous single project without losing its image", async () => {
+  const [schema, migration] = await Promise.all([
+    source("db/schema.ts"),
+    source("drizzle/0001_chemical_captain_cross.sql"),
+  ]);
+
+  assert.match(schema, /sqliteTable\(\s*"mask_projects"/);
+  assert.match(schema, /mask_projects_user_updated_idx/);
+  assert.match(migration, /CREATE TABLE `mask_projects`/);
+  assert.match(migration, /INSERT INTO `mask_projects`/);
+  assert.match(migration, /FROM `projects`/);
+  assert.match(migration, /WHERE `image_key` IS NOT NULL/);
 });

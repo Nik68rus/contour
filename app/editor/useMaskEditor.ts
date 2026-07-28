@@ -105,6 +105,23 @@ export function useMaskEditor() {
     setShowGrid(state.showGrid);
   }, []);
 
+  const clearProject = useCallback(() => {
+    if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+    objectUrlRef.current = null;
+    setImageUrl(null);
+    setImageBlob(null);
+    setImageName("");
+    setImageSize({ width: 0, height: 0 });
+    setContours([]);
+    setSelectedId(null);
+    setNextId(1);
+    setZoom(100);
+    setFillOpacity(28);
+    setStrokeWidth(2);
+    setShowImage(true);
+    setShowGrid(true);
+  }, []);
+
   const restoreProject = useCallback(
     (state: ProjectState, blob: Blob) => {
       displayImageBlob(blob);
@@ -113,11 +130,20 @@ export function useMaskEditor() {
     [applyProjectState, displayImageBlob],
   );
 
-  const { saveStatus, savedAt, markImageDirty } = useProjectPersistence({
+  const {
+    projects,
+    activeProjectId,
+    saveStatus,
+    savedAt,
+    createProjects,
+    createProjectFromBackup,
+    selectProject,
+    removeProject,
+  } = useProjectPersistence({
     projectState,
     imageBlob,
-    imageName,
     onRestore: restoreProject,
+    onClear: clearProject,
     onToast: setToast,
   });
 
@@ -210,24 +236,6 @@ export function useMaskEditor() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [closeDraft, deleteSelected, draftContour, undoLastPoint]);
 
-  const loadImage = (file?: File) => {
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      setToast("Выберите файл изображения");
-      return;
-    }
-    if (saveStatus === "restoring") return;
-
-    displayImageBlob(file);
-    markImageDirty();
-    setImageName(file.name);
-    setImageSize({ width: 0, height: 0 });
-    setContours([]);
-    setSelectedId(null);
-    setNextId(1);
-    setZoom(100);
-  };
-
   const exportProjectFile = async () => {
     if (!imageBlob) return;
     try {
@@ -242,10 +250,11 @@ export function useMaskEditor() {
     if (!file) return;
     try {
       const project = await readProjectBackup(file);
-      displayImageBlob(project.imageBlob);
-      applyProjectState(project.state);
-      markImageDirty();
-      setToast("Проект открыт и будет сохранён в облаке");
+      await createProjectFromBackup(
+        project.state,
+        project.imageBlob,
+        project.state.imageName,
+      );
     } catch {
       setToast("Не удалось открыть файл проекта");
     }
@@ -417,13 +426,17 @@ export function useMaskEditor() {
     showImage,
     showGrid,
     toast,
+    projects,
+    activeProjectId,
     saveStatus,
     savedAt,
     viewportRef,
     stageScale,
     stageWidth,
     stageHeight,
-    loadImage,
+    addImages: createProjects,
+    selectProject,
+    removeProject,
     exportProjectFile,
     importProjectFile,
     createContour,

@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { env } from "cloudflare:workers";
 import { getDb } from ".";
 import { projects } from "./schema";
@@ -6,48 +6,83 @@ import { projects } from "./schema";
 export type SavedProject = typeof projects.$inferSelect;
 
 type ProjectWrite = {
+  id: string;
   userEmail: string;
+  title: string;
   stateJson: string;
-  imageKey: string | null;
-  imageName: string | null;
-  imageType: string | null;
+  imageKey: string;
+  imageName: string;
+  imageType: string;
 };
 
 type ProjectRuntimeEnv = {
   PROJECT_FILES?: R2Bucket;
 };
 
+export async function listProjects(userEmail: string) {
+  return getDb()
+    .select()
+    .from(projects)
+    .where(eq(projects.userEmail, userEmail))
+    .orderBy(desc(projects.updatedAt));
+}
+
 export async function getSavedProject(
   userEmail: string,
+  projectId: string,
 ): Promise<SavedProject | null> {
   const db = getDb();
   const [project] = await db
     .select()
     .from(projects)
-    .where(eq(projects.userEmail, userEmail))
+    .where(
+      and(eq(projects.userEmail, userEmail), eq(projects.id, projectId)),
+    )
     .limit(1);
   return project ?? null;
 }
 
-export async function saveProject(project: ProjectWrite) {
+export async function createProject(project: ProjectWrite) {
+  const db = getDb();
+  const createdAt = new Date().toISOString();
+
+  await db.insert(projects).values({
+    ...project,
+    createdAt,
+    updatedAt: createdAt,
+  });
+
+  return createdAt;
+}
+
+export async function saveProject(
+  userEmail: string,
+  projectId: string,
+  stateJson: string,
+  title: string,
+) {
   const db = getDb();
   const updatedAt = new Date().toISOString();
 
   await db
-    .insert(projects)
-    .values({ ...project, updatedAt })
-    .onConflictDoUpdate({
-      target: projects.userEmail,
-      set: {
-        stateJson: project.stateJson,
-        imageKey: project.imageKey,
-        imageName: project.imageName,
-        imageType: project.imageType,
-        updatedAt,
-      },
-    });
-
+    .update(projects)
+    .set({ stateJson, title, updatedAt })
+    .where(
+      and(eq(projects.userEmail, userEmail), eq(projects.id, projectId)),
+    );
   return updatedAt;
+}
+
+export async function deleteProject(userEmail: string, projectId: string) {
+  const project = await getSavedProject(userEmail, projectId);
+  if (!project) return null;
+
+  await getDb()
+    .delete(projects)
+    .where(
+      and(eq(projects.userEmail, userEmail), eq(projects.id, projectId)),
+    );
+  return project;
 }
 
 export function getProjectBucket(): R2Bucket {
@@ -60,11 +95,11 @@ export function getProjectBucket(): R2Bucket {
   return bucket;
 }
 
-export async function projectImageKey(userEmail: string) {
+export async function projectImageKey(userEmail: string, projectId: string) {
   const data = new TextEncoder().encode(userEmail.toLowerCase());
   const digest = await crypto.subtle.digest("SHA-256", data);
   const hash = Array.from(new Uint8Array(digest))
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
-  return `projects/${hash}/source`;
+  return `projects/${hash}/${projectId}/source`;
 }

@@ -3,7 +3,9 @@
 import { useRef, type ChangeEvent } from "react";
 import { InspectorPanel } from "./editor/InspectorPanel";
 import { LayersPanel } from "./editor/LayersPanel";
+import { ProjectsPanel } from "./editor/ProjectsPanel";
 import { Topbar } from "./editor/Topbar";
+import type { ProjectSummary } from "./editor/types";
 import { useMaskEditor } from "./editor/useMaskEditor";
 import { Workspace } from "./editor/Workspace";
 
@@ -13,13 +15,20 @@ export default function Home() {
   const projectInputRef = useRef<HTMLInputElement>(null);
 
   const handleImageChange = (event: ChangeEvent<HTMLInputElement>) => {
-    editor.loadImage(event.target.files?.[0]);
+    void editor.addImages(Array.from(event.target.files ?? []));
     event.target.value = "";
   };
 
   const handleProjectChange = (event: ChangeEvent<HTMLInputElement>) => {
     void editor.importProjectFile(event.target.files?.[0]);
     event.target.value = "";
+  };
+
+  const handleDeleteProject = (project: ProjectSummary) => {
+    const confirmed = window.confirm(
+      `Удалить проект «${project.title}» вместе с изображением и маской?`,
+    );
+    if (confirmed) void editor.removeProject(project.id);
   };
 
   return (
@@ -31,7 +40,7 @@ export default function Home() {
         completedCount={editor.completedCount}
         saveStatus={editor.saveStatus}
         savedAt={editor.savedAt}
-        onOpenImage={() => fileInputRef.current?.click()}
+        onAddImages={() => fileInputRef.current?.click()}
         onExportSvg={editor.exportSvg}
       />
 
@@ -40,8 +49,9 @@ export default function Home() {
         className="visually-hidden"
         type="file"
         accept="image/*"
+        multiple
         onChange={handleImageChange}
-        aria-label="Загрузить изображение"
+        aria-label="Добавить изображения"
       />
       <input
         ref={projectInputRef}
@@ -53,6 +63,15 @@ export default function Home() {
       />
 
       <section className="editor-grid">
+        <ProjectsPanel
+          projects={editor.projects}
+          activeProjectId={editor.activeProjectId}
+          saveStatus={editor.saveStatus}
+          onAdd={() => fileInputRef.current?.click()}
+          onSelect={(projectId) => void editor.selectProject(projectId)}
+          onDelete={handleDeleteProject}
+        />
+
         <LayersPanel
           imageUrl={editor.imageUrl}
           imageName={editor.imageName}
@@ -94,8 +113,8 @@ export default function Home() {
           draftContour={editor.draftContour}
           fillOpacity={editor.fillOpacity}
           strokeWidth={editor.strokeWidth}
-          onOpenImage={() => fileInputRef.current?.click()}
-          onFileDrop={editor.loadImage}
+          onOpenImages={() => fileInputRef.current?.click()}
+          onFilesDrop={(files) => void editor.addImages(files)}
           onToggleGrid={() => editor.setShowGrid((visible) => !visible)}
           onZoomReset={editor.resetZoom}
           onZoomIn={() => editor.nudgeZoom(1)}

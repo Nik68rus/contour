@@ -8,7 +8,7 @@ type TopbarProps = {
   completedCount: number;
   saveStatus: SaveStatus;
   savedAt: string | null;
-  onOpenImage: () => void;
+  onAddImages: () => void;
   onExportSvg: () => void;
 };
 
@@ -32,7 +32,7 @@ export function Topbar({
   completedCount,
   saveStatus,
   savedAt,
-  onOpenImage,
+  onAddImages,
   onExportSvg,
 }: TopbarProps) {
   return (
@@ -66,11 +66,11 @@ export function Topbar({
       <div className="top-actions">
         <button
           className="button button-ghost"
-          onClick={onOpenImage}
+          onClick={onAddImages}
           disabled={saveStatus === "restoring"}
         >
           <Icon>↥</Icon>
-          {hasImage ? "Заменить" : "Открыть"}
+          Добавить
         </button>
         <button
           className="button button-primary"

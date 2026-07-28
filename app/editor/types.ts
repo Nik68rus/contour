@@ -34,6 +34,16 @@ export type ProjectBackup = {
   };
 };
 
+export type ProjectSummary = {
+  id: string;
+  title: string;
+  imageName: string;
+  imageType: string;
+  contourCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type SaveStatus = "restoring" | "idle" | "saving" | "saved" | "error";
 
 export const MASK_COLORS = [
