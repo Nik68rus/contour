@@ -57,6 +57,15 @@ async function decodeImage(blob: Blob): Promise<DecodedImage> {
   return loadHtmlImage(blob);
 }
 
+export async function getImageDimensions(image: Blob) {
+  const decoded = await decodeImage(image);
+  try {
+    return { width: decoded.width, height: decoded.height };
+  } finally {
+    decoded.dispose();
+  }
+}
+
 function canvasToWebp(
   canvas: HTMLCanvasElement,
   quality: number,

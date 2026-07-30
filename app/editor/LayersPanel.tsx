@@ -24,6 +24,7 @@ type LayersPanelProps = {
   onCreateContour: () => void;
   onExportProject: () => void;
   onOpenProject: () => void;
+  onReplaceImage: () => void;
 };
 
 export function LayersPanel({
@@ -44,6 +45,7 @@ export function LayersPanel({
   onCreateContour,
   onExportProject,
   onOpenProject,
+  onReplaceImage,
 }: LayersPanelProps) {
   if (collapsed) {
     return (
@@ -144,6 +146,19 @@ export function LayersPanel({
       </button>
 
       <div className="project-file-actions">
+        <button
+          className="replace-image-action"
+          onClick={onReplaceImage}
+          disabled={
+            !hasImageBlob ||
+            saveStatus === "restoring" ||
+            saveStatus === "saving"
+          }
+          title="Заменить исходное изображение, сохранив маску"
+        >
+          <Icon>↻</Icon>
+          Заменить изображение
+        </button>
         <button
           onClick={onExportProject}
           disabled={!hasImageBlob}

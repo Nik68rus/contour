@@ -73,6 +73,31 @@ export async function saveProject(
   return updatedAt;
 }
 
+export async function saveProjectImage(
+  userEmail: string,
+  projectId: string,
+  stateJson: string,
+  imageKey: string,
+  imageName: string,
+  imageType: string,
+) {
+  const updatedAt = new Date().toISOString();
+
+  await getDb()
+    .update(projects)
+    .set({
+      stateJson,
+      imageKey,
+      imageName,
+      imageType,
+      updatedAt,
+    })
+    .where(
+      and(eq(projects.userEmail, userEmail), eq(projects.id, projectId)),
+    );
+  return updatedAt;
+}
+
 export async function deleteProject(userEmail: string, projectId: string) {
   const project = await getSavedProject(userEmail, projectId);
   if (!project) return null;
@@ -95,11 +120,15 @@ export function getProjectBucket(): R2Bucket {
   return bucket;
 }
 
-export async function projectImageKey(userEmail: string, projectId: string) {
+export async function projectImageKey(
+  userEmail: string,
+  projectId: string,
+  objectName = "source",
+) {
   const data = new TextEncoder().encode(userEmail.toLowerCase());
   const digest = await crypto.subtle.digest("SHA-256", data);
   const hash = Array.from(new Uint8Array(digest))
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
-  return `projects/${hash}/${projectId}/source`;
+  return `projects/${hash}/${projectId}/${objectName}`;
 }

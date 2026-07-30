@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   compressImageForUpload,
   formatFileSize,
+  getImageDimensions,
   MAX_SAFE_IMAGE_UPLOAD_BYTES,
 } from "./image-compression";
 import type {
@@ -281,8 +282,18 @@ export function useProjectPersistence({
       imageName: string,
       state: ProjectState,
     ): Promise<PreparedImage | null> => {
+      const namedState = { ...state, imageName };
       if (image.size <= MAX_SAFE_IMAGE_UPLOAD_BYTES) {
-        return { image, state, compressed: false };
+        const dimensions = await getImageDimensions(image);
+        return {
+          image,
+          state: fitProjectStateToImage(
+            namedState,
+            dimensions.width,
+            dimensions.height,
+          ),
+          compressed: false,
+        };
       }
 
       const accepted = window.confirm(
@@ -299,7 +310,7 @@ export function useProjectPersistence({
       return {
         image: compressed.blob,
         state: fitProjectStateToImage(
-          state,
+          namedState,
           compressed.width,
           compressed.height,
         ),
@@ -434,6 +445,92 @@ export function useProjectPersistence({
     ],
   );
 
+  const replaceProjectImage = useCallback(
+    async (file?: File) => {
+      const projectId = activeProjectIdRef.current;
+      if (!projectId || !file) return;
+      if (!file.type.startsWith("image/")) {
+        onToast("Выберите файл изображения");
+        return;
+      }
+
+      await flushCurrentProject();
+      if (activeProjectIdRef.current !== projectId) return;
+
+      const operationGeneration = ++loadGenerationRef.current;
+      setSaveStatus("saving");
+      try {
+        const prepared = await prepareImageForUpload(
+          file,
+          file.name,
+          projectStateRef.current,
+        );
+        if (!prepared) {
+          if (activeProjectIdRef.current === projectId) setSaveStatus("saved");
+          onToast("Замена изображения отменена");
+          return;
+        }
+
+        const stateJson = JSON.stringify(prepared.state);
+        const formData = new FormData();
+        formData.append("state", stateJson);
+        formData.append("image", prepared.image, file.name || "image");
+        formData.append("imageName", file.name || "image");
+
+        const response = await fetch(
+          `/api/projects/${encodeURIComponent(projectId)}/image`,
+          { method: "PUT", body: formData },
+        );
+        if (!response.ok) throw new Error("Image replacement unavailable");
+
+        const payload = (await response.json()) as {
+          title: string;
+          imageName: string;
+          imageType: string;
+          contourCount: number;
+          updatedAt: string;
+        };
+        setProjects((items) =>
+          sortProjects(
+            items.map((item) =>
+              item.id === projectId
+                ? {
+                    ...item,
+                    title: payload.title,
+                    imageName: payload.imageName,
+                    imageType: payload.imageType,
+                    contourCount: payload.contourCount,
+                    updatedAt: payload.updatedAt,
+                  }
+                : item,
+            ),
+          ),
+        );
+
+        if (
+          activeProjectIdRef.current === projectId &&
+          loadGenerationRef.current === operationGeneration
+        ) {
+          lastSavedStateRef.current = stateJson;
+          projectStateRef.current = prepared.state;
+          imageBlobRef.current = prepared.image;
+          setSavedAt(payload.updatedAt);
+          onRestore(prepared.state, prepared.image);
+          setSaveStatus("saved");
+        }
+        onToast(
+          prepared.compressed
+            ? "Изображение заменено и сжато"
+            : "Фоновое изображение заменено",
+        );
+      } catch {
+        if (activeProjectIdRef.current === projectId) setSaveStatus("error");
+        onToast("Не удалось заменить изображение");
+      }
+    },
+    [flushCurrentProject, onRestore, onToast, prepareImageForUpload],
+  );
+
   const removeProject = useCallback(
     async (projectId: string) => {
       const isActive = activeProjectIdRef.current === projectId;
@@ -546,6 +643,7 @@ export function useProjectPersistence({
     savedAt,
     createProjects,
     createProjectFromBackup,
+    replaceProjectImage,
     selectProject,
     removeProject,
   };

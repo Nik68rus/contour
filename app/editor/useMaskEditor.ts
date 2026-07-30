@@ -137,6 +137,7 @@ export function useMaskEditor() {
     savedAt,
     createProjects,
     createProjectFromBackup,
+    replaceProjectImage,
     selectProject,
     removeProject,
   } = useProjectPersistence({
@@ -435,6 +436,7 @@ export function useMaskEditor() {
     stageWidth,
     stageHeight,
     addImages: createProjects,
+    replaceImage: replaceProjectImage,
     selectProject,
     removeProject,
     exportProjectFile,

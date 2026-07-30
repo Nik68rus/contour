@@ -12,6 +12,7 @@ import { Workspace } from "./editor/Workspace";
 export default function Home() {
   const editor = useMaskEditor();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const replaceImageInputRef = useRef<HTMLInputElement>(null);
   const projectInputRef = useRef<HTMLInputElement>(null);
   const [collapsedPanels, setCollapsedPanels] = useState({
     projects: false,
@@ -45,6 +46,13 @@ export default function Home() {
 
   const handleProjectChange = (event: ChangeEvent<HTMLInputElement>) => {
     void editor.importProjectFile(event.target.files?.[0]);
+    event.target.value = "";
+  };
+
+  const handleReplaceImageChange = (
+    event: ChangeEvent<HTMLInputElement>,
+  ) => {
+    void editor.replaceImage(event.target.files?.[0]);
     event.target.value = "";
   };
 
@@ -86,6 +94,14 @@ export default function Home() {
         accept=".contour,application/json"
         onChange={handleProjectChange}
         aria-label="Открыть файл проекта Contour"
+      />
+      <input
+        ref={replaceImageInputRef}
+        className="visually-hidden"
+        type="file"
+        accept="image/*"
+        onChange={handleReplaceImageChange}
+        aria-label="Заменить фоновое изображение"
       />
 
       <section
@@ -130,6 +146,7 @@ export default function Home() {
           onCreateContour={() => editor.createContour()}
           onExportProject={() => void editor.exportProjectFile()}
           onOpenProject={() => projectInputRef.current?.click()}
+          onReplaceImage={() => replaceImageInputRef.current?.click()}
         />
 
         <Workspace

@@ -12,6 +12,7 @@ test("supports a componentized multi-project editor", async () => {
   const [
     page,
     projectsPanel,
+    layersPanel,
     workspace,
     persistence,
     collapsiblePanel,
@@ -20,6 +21,7 @@ test("supports a componentized multi-project editor", async () => {
     await Promise.all([
       source("app/page.tsx"),
       source("app/editor/ProjectsPanel.tsx"),
+      source("app/editor/LayersPanel.tsx"),
       source("app/editor/Workspace.tsx"),
       source("app/editor/useProjectPersistence.ts"),
       source("app/editor/CollapsiblePanel.tsx"),
@@ -29,6 +31,7 @@ test("supports a componentized multi-project editor", async () => {
   assert.match(page, /<ProjectsPanel/);
   assert.match(page, /multiple/);
   assert.match(page, /editor\.addImages/);
+  assert.match(page, /editor\.replaceImage/);
   assert.match(page, /editor\.selectProject/);
   assert.match(projectsPanel, /project\.contourCount/);
   assert.match(projectsPanel, /Удалить проект/);
@@ -42,11 +45,14 @@ test("supports a componentized multi-project editor", async () => {
   assert.match(page, /toggleFocusMode/);
   assert.match(collapsiblePanel, /CollapsedPanelRail/);
   assert.match(collapsiblePanel, /PanelCollapseButton/);
+  assert.match(layersPanel, /Заменить изображение/);
   assert.match(persistence, /window\.confirm/);
   assert.match(persistence, /fitProjectStateToImage/);
   assert.match(persistence, /compressImageForUpload/);
+  assert.match(persistence, /replaceProjectImage/);
   assert.match(imageCompression, /MAX_SAFE_IMAGE_UPLOAD_BYTES/);
   assert.match(imageCompression, /canvasToWebp/);
+  assert.match(imageCompression, /getImageDimensions/);
 });
 
 test("keeps every project scoped to its authenticated owner", async () => {
@@ -63,6 +69,9 @@ test("keeps every project scoped to its authenticated owner", async () => {
   assert.match(collectionRoute, /getChatGPTUser/);
   assert.match(projectRoute, /getSavedProject\(user\.email, projectId\)/);
   assert.match(imageRoute, /getSavedProject\(user\.email, projectId\)/);
+  assert.match(imageRoute, /export async function PUT/);
+  assert.match(imageRoute, /saveProjectImage/);
+  assert.match(database, /export async function saveProjectImage/);
 });
 
 test("migrates the previous single project without losing its image", async () => {
